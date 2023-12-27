@@ -495,6 +495,56 @@ async fn test_from_row_json_attr() -> anyhow::Result<()> {
 }
 
 #[sqlx_macros::test]
+async fn test_from_row_json_attr_nullable_not_null() -> anyhow::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct J {
+        a: u32,
+        b: u32,
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        #[sqlx(json_nullable)]
+        j: Option<J>,
+    }
+
+    let mut conn = new::<MySql>().await?;
+
+    let record = sqlx::query_as::<_, Record>("select json_object('a', 1, 'b', 2) as j")
+        .fetch_one(&mut conn)
+        .await?;
+
+    assert!(record.j.is_some());
+
+    Ok(())
+}
+
+#[sqlx_macros::test]
+async fn test_from_row_json_attr_nullable_null() -> anyhow::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct J {
+        a: u32,
+        b: u32,
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        #[sqlx(json_nullable)]
+        j: Option<J>,
+    }
+
+    let mut conn = new::<MySql>().await?;
+
+    let record = sqlx::query_as::<_, Record>("select null as j")
+        .fetch_one(&mut conn)
+        .await?;
+
+    assert!(record.j.is_none());
+
+    Ok(())
+}
+
+#[sqlx_macros::test]
 async fn test_from_row_json_try_from_attr() -> anyhow::Result<()> {
     #[derive(serde::Deserialize)]
     struct J {
@@ -526,6 +576,78 @@ async fn test_from_row_json_try_from_attr() -> anyhow::Result<()> {
         .await?;
 
     assert_eq!(record.j.sum, 3);
+
+    Ok(())
+}
+
+#[sqlx_macros::test]
+async fn test_from_row_nullable_json_try_from_attr() -> anyhow::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct J {
+        a: u32,
+        b: u32,
+    }
+
+    // Non-deserializable
+    struct J2 {
+        sum: u32,
+    }
+
+    impl std::convert::From<J> for J2 {
+        fn from(j: J) -> Self {
+            Self { sum: j.a + j.b }
+        }
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        #[sqlx(json_nullable, try_from = "Option<J>")]
+        j: Option<J2>,
+    }
+
+    let mut conn = new::<MySql>().await?;
+
+    let record = sqlx::query_as::<_, Record>("select json_object('a', 1, 'b', 2) as j")
+        .fetch_one(&mut conn)
+        .await?;
+
+    assert_eq!(record.j.unwrap().sum, 3);
+
+    Ok(())
+}
+
+#[sqlx_macros::test]
+async fn test_from_row_nullable_json_try_from_attr_null() -> anyhow::Result<()> {
+    #[derive(serde::Deserialize)]
+    struct J {
+        a: u32,
+        b: u32,
+    }
+
+    // Non-deserializable
+    struct J2 {
+        sum: u32,
+    }
+
+    impl std::convert::From<J> for J2 {
+        fn from(j: J) -> Self {
+            Self { sum: j.a + j.b }
+        }
+    }
+
+    #[derive(sqlx::FromRow)]
+    struct Record {
+        #[sqlx(json_nullable, try_from = "Option<J>")]
+        j: Option<J2>,
+    }
+
+    let mut conn = new::<MySql>().await?;
+
+    let record = sqlx::query_as::<_, Record>("select null as j")
+        .fetch_one(&mut conn)
+        .await?;
+
+    assert!(record.j.is_none());
 
     Ok(())
 }

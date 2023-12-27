@@ -98,9 +98,9 @@ fn expand_derive_from_row_struct(
                 })
                 .unwrap();
 
-            let expr: Expr = match (attributes.flatten, attributes.try_from, attributes.json) {
+            let expr: Expr = match (attributes.flatten, attributes.try_from, attributes.json, attributes.json_nullable) {
                 // <No attributes>
-                (false, None, false) => {
+                (false, None, false, false) => {
                     predicates
                         .push(parse_quote!(#ty: ::sqlx::decode::Decode<#lifetime, R::Database>));
                     predicates.push(parse_quote!(#ty: ::sqlx::types::Type<R::Database>));
@@ -108,21 +108,29 @@ fn expand_derive_from_row_struct(
                     parse_quote!(row.try_get(#id_s))
                 }
                 // Flatten
-                (true, None, false) => {
+                (true, None, false, false) => {
                     predicates.push(parse_quote!(#ty: ::sqlx::FromRow<#lifetime, R>));
                     parse_quote!(<#ty as ::sqlx::FromRow<#lifetime, R>>::from_row(row))
                 }
                 // Flatten + Try from
-                (true, Some(try_from), false) => {
+                (true, Some(try_from), false, false) => {
                     predicates.push(parse_quote!(#try_from: ::sqlx::FromRow<#lifetime, R>));
                     parse_quote!(<#try_from as ::sqlx::FromRow<#lifetime, R>>::from_row(row).and_then(|v| <#ty as ::std::convert::TryFrom::<#try_from>>::try_from(v).map_err(|e| ::sqlx::Error::ColumnNotFound("FromRow: try_from failed".to_string())))) 
                 }
                 // Flatten + Json
-                (true, _, true) => {
+                (true, _, true, false) => {
+                    panic!("Cannot use both flatten and json")
+                }
+                // Flatten + Json + Json Nullable
+                (true, _, true, true) => {
+                    panic!("Cannot use both flatten and json")
+                }
+                // Flatten + Nullable Json
+                (true, _, false, true) => {
                     panic!("Cannot use both flatten and json")
                 }
                 // Try from
-                (false, Some(try_from), false) => {
+                (false, Some(try_from), false, false) => {
                     predicates
                         .push(parse_quote!(#try_from: ::sqlx::decode::Decode<#lifetime, R::Database>));
                     predicates.push(parse_quote!(#try_from: ::sqlx::types::Type<R::Database>)); 
@@ -130,7 +138,7 @@ fn expand_derive_from_row_struct(
                     parse_quote!(row.try_get(#id_s).and_then(|v| <#ty as ::std::convert::TryFrom::<#try_from>>::try_from(v).map_err(|e| ::sqlx::Error::ColumnNotFound("FromRow: try_from failed".to_string()))))
                 }
                 // Try from + Json
-                (false, Some(try_from), true) => {
+                (false, Some(try_from), true, false) => {
                     predicates
                         .push(parse_quote!(::sqlx::types::Json<#try_from>: ::sqlx::decode::Decode<#lifetime, R::Database>));
                     predicates.push(parse_quote!(::sqlx::types::Json<#try_from>: ::sqlx::types::Type<R::Database>));
@@ -142,13 +150,37 @@ fn expand_derive_from_row_struct(
                         )
                     )
                 },
+                // Try from + Json + nullable Json
+                (false, Some(try_from), true, true) => {
+                    panic!("Cannot use both json and nullable json")
+                },
+                // Try from + nullable Json
+                (false, Some(try_from), false, true) => {
+                    predicates
+                        .push(parse_quote!(::sqlx::types::Json<#try_from>: ::sqlx::decode::Decode<#lifetime, R::Database>));
+                    predicates.push(parse_quote!(::sqlx::types::Json<#try_from>: ::sqlx::types::Type<R::Database>));
+
+                    parse_quote!(row.try_get::<::std::option::Option<::sqlx::types::Json<_>>, _>(#id_s).map(|x| x.map_or(None, |y| <#ty as ::std::convert::TryFrom::<#try_from>>::try_from(y).map_err(|e| ::sqlx::Error::ColumnNotFound("FromRow: try_from failed".to_string())))))
+                },
                 // Json
-                (false, None, true) => {
+                (false, None, true, false) => {
                     predicates
                         .push(parse_quote!(::sqlx::types::Json<#ty>: ::sqlx::decode::Decode<#lifetime, R::Database>));
                     predicates.push(parse_quote!(::sqlx::types::Json<#ty>: ::sqlx::types::Type<R::Database>));
 
                     parse_quote!(row.try_get::<::sqlx::types::Json<_>, _>(#id_s).map(|x| x.0))
+                },
+                // Json + nullable Json
+                (false, None, true, true) => {
+                    panic!("Cannot use both json and nullable json")
+                },
+                // nullable Json
+                (false, None, false, true) => {
+                    predicates
+                        .push(parse_quote!(::std::option::Option<::sqlx::types::Json<#ty>>: ::sqlx::decode::Decode<#lifetime, R::Database>));
+                    predicates.push(parse_quote!(::std::option::Option<::sqlx::types::Json<#ty>>: ::sqlx::types::Type<R::Database>));
+
+                    parse_quote!(row.try_get::<::std::option::Option<::sqlx::types::Json<_>>, _>(#id_s).map(|x| x.map_or(None, |y| y.0)))
                 },
             };
 

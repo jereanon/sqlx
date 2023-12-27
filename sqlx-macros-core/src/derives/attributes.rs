@@ -67,6 +67,7 @@ pub struct SqlxChildAttributes {
     pub try_from: Option<Type>,
     pub skip: bool,
     pub json: bool,
+    pub json_nullable: bool,
 }
 
 pub fn parse_container_attributes(input: &[Attribute]) -> syn::Result<SqlxContainerAttributes> {
@@ -173,6 +174,7 @@ pub fn parse_child_attributes(input: &[Attribute]) -> syn::Result<SqlxChildAttri
     let mut flatten = false;
     let mut skip: bool = false;
     let mut json = false;
+    let mut json_nullable = false;
 
     for attr in input.iter().filter(|a| a.path.is_ident("sqlx")) {
         let meta = attr
@@ -197,6 +199,7 @@ pub fn parse_child_attributes(input: &[Attribute]) -> syn::Result<SqlxChildAttri
                         Meta::Path(path) if path.is_ident("flatten") => flatten = true,
                         Meta::Path(path) if path.is_ident("skip") => skip = true,
                         Meta::Path(path) if path.is_ident("json") => json = true,
+                        Meta::Path(path) if path.is_ident("json_nullable") => json_nullable = true,
                         u => fail!(u, "unexpected attribute"),
                     },
                     u => fail!(u, "unexpected attribute"),
@@ -219,6 +222,7 @@ pub fn parse_child_attributes(input: &[Attribute]) -> syn::Result<SqlxChildAttri
         try_from,
         skip,
         json,
+        json_nullable
     })
 }
 
